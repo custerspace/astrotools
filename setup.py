@@ -10,5 +10,6 @@ setuptools.setup(name='astrotools',
     description="Generic Deep Sky Astrophotography Tools",
     include_dirs=[np.get_include()],
     author_email='jrmlhermitte@gmail.com',
+   install_requires=['six', 'numpy', 'PIL', 'rawkit'],  # essential deps only
     keywords='Astronomy Deep Sky Astrophotography',
 )

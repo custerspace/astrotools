@@ -19,7 +19,10 @@ class AstroImage:
     def _init_raw(self):
         rawfile = Raw(self.filename)
         self._rawimage = np.array(rawfile.raw_image())
-        self._colorfilter = np.array(rawfile.color_filter_array)
+        # TODO maybe find better way to get color filter array
+        #self._colorfilter = np.array(rawfile.color_filter_array)
+        self._colorfilter = [['R', 'G'], ['G', 'B']]
+
 
     @property
     def rawimage(self):

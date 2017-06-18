@@ -86,7 +86,8 @@ def _rawbayer2image(img, bayer_mat):
     imgY, imgX = np.meshgrid(imgy,imgx,indexing='ij')
 
     # allocate space for the final color image
-    cimg = np.zeros((img.shape[0], img.shape[1], 3), dtype=np.uint8)
+    # TODO : find bit dept of image
+    cimg = np.zeros((img.shape[0], img.shape[1], 3), dtype=np.uint16)
 
     # go through each color
     for i, clr in enumerate(clrs):

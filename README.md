@@ -1,6 +1,16 @@
 ## Astrophotography tools
 
-Work in progress. Currently uses rawkit. Something like this should work:
+Work in progress.
+If just reading raw images, you should just use rawkit, for example:
+```python
+    from rawkit.raw import Raw
+    im = Raw(filename)
+    raw = im.raw_image()
+    print(raw.shape)
+    print(raw[0])
+```
+
+For this library, something like this should work:
 
     In [1]: from astrotools.readers.readers import AstroImage
 

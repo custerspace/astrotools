@@ -1,7 +1,8 @@
 ## Astrophotography tools
 
 Work in progress.
-If just reading raw images, you should just use rawkit, for example:
+If just reading raw images, you should just use
+[rawkit](https://github.com/photoshell/rawkit/), for example:
 ```python
     from rawkit.raw import Raw
     im = Raw(filename)

@@ -2,6 +2,7 @@
 import numpy as np
 from scipy.ndimage.filters import convolve
 from rawkit.raw import Raw
+from scipy.interpolate import RegularGridInterpolator, NearestNDInterpolator
 
 class AstroImage:
     ''' This class is meant to open multiple image formats.
@@ -20,8 +21,9 @@ class AstroImage:
         rawfile = Raw(self.filename)
         self._rawimage = np.array(rawfile.raw_image())
         # TODO maybe find better way to get color filter array
+        # through a lookup table?
         #self._colorfilter = np.array(rawfile.color_filter_array)
-        self._colorfilter = [['R', 'G'], ['G', 'B']]
+        self._colorfilter = np.array([['R', 'G'], ['G', 'B']])
 
 
     @property
@@ -41,14 +43,7 @@ class AstroImage:
         ''' Create RGB image from Bayer filter.'''
         if self._color_image is None:
             rawimage = self.rawimage
-            clfilt = np.array(self.color_filter)
-            filtrows = len(clfilt[0])
-            filtcols = len(clfilt)
-            kernels = self.color_kernels
-            color_image = np.zeros((3, *rawimage.shape))
-            # The components, R, G, B
-            for i in range(3):
-                color_image[i] = convolve(rawimage, kernels[i])
+            color_image = _rawbayer2image(rawimage, self.color_filter)
             self._color_image = color_image
 
         return self._color_image
@@ -57,22 +52,93 @@ class AstroImage:
     def grey_image(self):
         return np.sum(self._color_image, axis=0)
 
-    @property
-    def color_kernels(self):
-        if self._kernels is None:
-            self._make_kernels(self.color_filter)
-        return self._kernels
 
 
-    def _make_kernels(self, cfilt):
-        Rkernel = self._make_kernel(cfilt, "R")
-        Gkernel = self._make_kernel(cfilt, "G")
-        Bkernel = self._make_kernel(cfilt, "B")
-        self._kernels = np.array([Rkernel, Gkernel, Bkernel])
+def _rawbayer2image(img, bayer_mat):
+    ''' This converts a raw image to a color image
+        assuming the bayer matrix "bayer_mat".
 
-    def _make_kernel(self, cfilt, clr):
-        kernel = (cfilt == clr).astype(float)
-        kernel /= np.sum(kernel)
-        return kernel
+        Parameters
+        ----------
 
+        img : the raw image
+        bayer_mat : a Bayer matrix of strings "R", "G" or "B"
 
+        Returns
+        -------
+
+        cimg : np.ndarray, np.uint8
+            The resultant interpolated color image
+
+        Notes
+        -----
+
+        This needs to be optimized, and eventually written in C
+    '''
+    bayer_dims = bayer_mat.shape
+
+    clrs = ["R", "G", "B"]
+
+    # of the original image
+    imgy = np.arange(img.shape[0])
+    imgx = np.arange(img.shape[1])
+    # change to a grid (so there is one x and y per point on img)
+    imgY, imgX = np.meshgrid(imgy,imgx,indexing='ij')
+
+    # allocate space for the final color image
+    cimg = np.zeros((img.shape[0], img.shape[1], 3), dtype=np.uint8)
+
+    # go through each color
+    for i, clr in enumerate(clrs):
+        subimg = cimg[:,:,i]
+        # find the row/cols for the color
+        wy, wx = np.where(bayer_mat == clr)
+        # if there is only 1 per bayer matrix, then we interpolate
+        # using a fast linear interpolation scheme
+        if len(wx) == 1:
+            wy, wx = wy[0], wx[0]
+            values = img[wy::bayer_dims[0], wx::bayer_dims[1]]
+            # these are just 1D
+            ypts = imgy[wy::bayer_dims[0]]
+            xpts = imgx[wx::bayer_dims[1]]
+            # create the interpolator object
+            rinterp = RegularGridInterpolator((ypts, xpts), values,
+                                              bounds_error=False,
+                                              fill_value=None)
+
+            boolmat = (imgY % bayer_dims[0] == wy) * \
+                        (imgX % bayer_dims[1] == wx)
+            # fill in the data
+            subimg[boolmat] = img[boolmat]
+            # points of missing data
+            nboolmat = ~boolmat
+            ypts = imgY[nboolmat].ravel()
+            xpts = imgX[nboolmat].ravel()
+            # for each element in the Bayer matrix
+            pts = np.concatenate((ypts[:, np.newaxis],
+                                 xpts[:, np.newaxis],
+                                 ),axis=1)
+            subimg[ypts, xpts] = rinterp(pts)
+
+        # if it's greater than one, then we need a more complex interpolation
+        # scheme
+        elif len(wx) > 1:
+            # more complex interpolation
+            boolmat = np.zeros_like(subimg, dtype=bool)
+            # find the good points
+            for wxi, wyi in zip(wx, wy):
+                boolmat += (imgY % bayer_dims[0] == wyi) * \
+                            (imgX % bayer_dims[1] == wxi)
+
+            subimg[boolmat] = img[boolmat]
+
+            pts = np.concatenate((imgY[boolmat].ravel()[:,np.newaxis],
+                                  imgX[boolmat].ravel()[:,np.newaxis]),axis=1)
+            vals = img[boolmat].ravel()
+            rinterp = NearestNDInterpolator(pts, vals)
+
+            nboolmat = ~boolmat
+            missingpts = np.concatenate((imgY[nboolmat].ravel()[:,np.newaxis],
+                                         imgX[nboolmat].ravel()[:,np.newaxis]),axis=1)
+            subimg[nboolmat] = rinterp(missingpts)
+    return cimg
